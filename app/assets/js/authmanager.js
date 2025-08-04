@@ -57,7 +57,6 @@ function microsoftErrorDisplayable(errorCode) {
  * configuration database.
  * 
  * @param {string} username The account username (email if migrated).
- * @param {string} password The account password.
  * @returns {Promise.<Object>} Promise which resolves the resolved authenticated account object.
  */
 exports.addOfflineAccount = async function(username) {
@@ -275,6 +274,8 @@ exports.validateSelected = async function(){
 
     if(current.type === 'microsoft') {
         return await validateSelectedMicrosoftAccount()
+    } else {
+        return true
     }
     
 }
