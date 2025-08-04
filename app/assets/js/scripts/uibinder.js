@@ -369,7 +369,7 @@ async function validateSelectedAccount(){
                                 selectedAcc.microsoft.expires_at
                             )
                         } else {
-                            ConfigManager.addMojangAuthAccount(selectedAcc.uuid, selectedAcc.accessToken, selectedAcc.username, selectedAcc.displayName)
+                            ConfigManager.addOfflineAccount(selectedAcc.uuid, selectedAcc.accessToken, selectedAcc.username, selectedAcc.displayName)
                         }
                         ConfigManager.save()
                         validateSelectedAccount()

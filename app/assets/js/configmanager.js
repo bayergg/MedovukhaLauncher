@@ -314,21 +314,21 @@ exports.getAuthAccount = function(uuid){
 }
 
 /**
- * Update the access token of an authenticated mojang account.
- * 
+ * Update the access token of an authenticated offline account.
+ *
  * @param {string} uuid The uuid of the authenticated account.
  * @param {string} accessToken The new Access Token.
  * 
  * @returns {Object} The authenticated account object created by this action.
  */
-exports.updateMojangAuthAccount = function(uuid, accessToken){
+exports.updateOfflineAuthAccount = function(uuid, accessToken){
     config.authenticationDatabase[uuid].accessToken = accessToken
-    config.authenticationDatabase[uuid].type = 'mojang' // For gradual conversion.
+    config.authenticationDatabase[uuid].type = 'offline' // For gradual conversion.
     return config.authenticationDatabase[uuid]
 }
 
 /**
- * Adds an authenticated mojang account to the database to be stored.
+ * Adds an authenticated offline account to the database to be stored.
  * 
  * @param {string} uuid The uuid of the authenticated account.
  * @param {string} accessToken The accessToken of the authenticated account.
@@ -337,10 +337,10 @@ exports.updateMojangAuthAccount = function(uuid, accessToken){
  * 
  * @returns {Object} The authenticated account object created by this action.
  */
-exports.addMojangAuthAccount = function(uuid, accessToken, username, displayName){
+exports.addOfflineAccount = function(uuid, accessToken, username, displayName){
     config.selectedAccount = uuid
     config.authenticationDatabase[uuid] = {
-        type: 'mojang',
+        type: 'offline',
         accessToken,
         username: username.trim(),
         uuid: uuid.trim(),
@@ -357,7 +357,7 @@ exports.addMojangAuthAccount = function(uuid, accessToken, username, displayName
  * @param {string} msAccessToken The new Microsoft Access Token
  * @param {string} msRefreshToken The new Microsoft Refresh Token
  * @param {date} msExpires The date when the microsoft access token expires
- * @param {date} mcExpires The date when the mojang access token expires
+ * @param {date} mcExpires The date when the offline access token expires
  * 
  * @returns {Object} The authenticated account object created by this action.
  */
@@ -376,7 +376,7 @@ exports.updateMicrosoftAuthAccount = function(uuid, accessToken, msAccessToken, 
  * @param {string} uuid The uuid of the authenticated account.
  * @param {string} accessToken The accessToken of the authenticated account.
  * @param {string} name The in game name of the authenticated account.
- * @param {date} mcExpires The date when the mojang access token expires
+ * @param {date} mcExpires The date when the offline access token expires
  * @param {string} msAccessToken The microsoft access token
  * @param {string} msRefreshToken The microsoft refresh token
  * @param {date} msExpires The date when the microsoft access token expires

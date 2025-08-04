@@ -1,7 +1,7 @@
 {
   "name": "helioslauncher",
   "version": "2.2.1",
-  "productName": "Helios Launcher",
+  "productName": "Medovukha Launcher",
   "description": "Modded Minecraft Launcher",
   "author": "Daniel Scalzi (https://github.com/dscalzi/)",
   "license": "UNLICENSED",
@@ -12,7 +12,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "electron .",
+    "start": "electron . --remote-debugging-port=9229",
     "dist": "electron-builder build",
     "dist:win": "npm run dist -- -w",
     "dist:mac": "npm run dist -- -m",
