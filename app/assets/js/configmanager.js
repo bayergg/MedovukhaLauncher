@@ -7,7 +7,7 @@ const logger = LoggerUtil.getLogger('ConfigManager')
 
 const sysRoot = process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME)
 
-const dataPath = path.join(sysRoot, '.helioslauncher')
+const dataPath = path.join(sysRoot, '.medovukhalauncher')
 
 const launcherDir = require('@electron/remote').app.getPath('userData')
 
@@ -65,7 +65,7 @@ function resolveSelectedRAM(ram) {
     } else {
         // Legacy behavior
         const mem = os.totalmem()
-        return mem >= (8*1073741824) ? '4G' : (mem >= (6*1073741824) ? '3G' : '2G')
+        return mem >= (16*1073741824) ? '16G' : (mem >= (8*1073741824) ? '8G' : '4G')
     }
 }
 
@@ -78,8 +78,8 @@ function resolveSelectedRAM(ram) {
 const DEFAULT_CONFIG = {
     settings: {
         game: {
-            resWidth: 1280,
-            resHeight: 720,
+            resWidth: 925,
+            resHeight: 530,
             fullscreen: false,
             autoConnect: true,
             launchDetached: true

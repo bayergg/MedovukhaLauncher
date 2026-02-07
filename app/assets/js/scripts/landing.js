@@ -544,6 +544,7 @@ async function dlAsync(login = true) {
         serv.rawServer.minecraftVersion)
     const distributionIndexProcessor = new DistributionIndexProcessor(
         ConfigManager.getCommonDirectory(),
+        ConfigManager.getInstanceDirectory(),
         distro,
         serv.rawServer.id
     )
