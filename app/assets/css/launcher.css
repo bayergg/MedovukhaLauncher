@@ -2451,40 +2451,106 @@ input:checked + .toggleSwitchSlider:before {
     position: relative;
     transition: background 2s ease;
     overflow-y: hidden;
+    display: flex;
+    box-sizing: border-box;
+}
+
+#gamePanel {
+    width: 190px;
+    height: 100%;
+    padding: 22px 16px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    background: linear-gradient(180deg, rgba(8, 8, 8, 0.7) 0%, rgba(10, 10, 10, 0.35) 100%);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#gamePanelHeader {
+    font-family: 'Avenir Medium';
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.65);
+    text-transform: uppercase;
+}
+
+#gamePanelButtons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.gameSelectButton {
+    width: 100%;
+    padding: 12px 14px;
+    font-family: 'Avenir Heavy';
+    font-size: 13px;
+    letter-spacing: 0.8px;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    transition: 0.25s ease;
+    outline: none;
+}
+
+.gameSelectButton:hover,
+.gameSelectButton:focus {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.gameSelectButton[selected] {
+    color: #f2e2b8;
+    background: linear-gradient(135deg, rgba(173, 120, 43, 0.35) 0%, rgba(94, 59, 18, 0.65) 100%);
+    border-color: rgba(242, 226, 184, 0.45);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.45);
+}
+
+#landingMain {
+    position: relative;
+    height: 100%;
+    flex: 1;
+    overflow: hidden;
+    transition: background 2s ease;
 }
 
 /* Upper content container. */
-#landingContainer > #upper {
+#landingMain > #upper {
     position: relative;
     transition: top 2s ease;
     top: 0px;
     height: 77%;
     display: flex;
 }
-#landingContainer > #upper > #left {
+#landingMain > #upper > #left {
     display: inline-flex;
     width: 15%;
     height: 100%;
     justify-content: flex-end;
 }
-#landingContainer > #upper > #content {
+#landingMain > #upper > #content {
     display: inline-flex;
     width: 70%;
     height: 100%;
 }
-#landingContainer > #upper > #right {
+#landingMain > #upper > #right {
     display: inline-flex;
     width: 15%;
     height: 100%;
 }
 
 /* Lower content container. */
-#landingContainer > #lower {
+#landingMain > #lower {
     height: 23%;
     display: flex;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
 }
-#landingContainer > #lower > #left {
+#landingMain > #lower > #left {
     position: relative;
     transition: top 2s ease;
     top: 0px;
@@ -2493,14 +2559,14 @@ input:checked + .toggleSwitchSlider:before {
     display: inline-flex;
     justify-content: center;
 }
-#landingContainer > #lower > #left #content {
+#landingMain > #lower > #left #content {
     position: relative;
     top: 25px;
     display: inline-flex;
     line-height: 24px;
     left: 50px;
 }
-#landingContainer > #lower > #center {
+#landingMain > #lower > #center {
     position: relative;
     transition: top 2s ease;
     top: 0px;
@@ -2509,13 +2575,13 @@ input:checked + .toggleSwitchSlider:before {
     display: inline-flex;
     justify-content: center;
 }
-#landingContainer > #lower > #center #content {
+#landingMain > #lower > #center #content {
     position: relative;
     z-index: 500;
     transition: top 2s ease;
     top: 10px;
 }
-#landingContainer > #lower > #right {
+#landingMain > #lower > #right {
     position: relative;
     transition: top 2s ease;
     top: 0px;
@@ -3222,6 +3288,14 @@ input:checked + .toggleSwitchSlider:before {
     cursor: pointer;
 }
 
+#landingContainer[data-game="blocknload"] #mojangStatusWrapper {
+    display: none;
+}
+
+#landingContainer[data-game="blocknload"] #server_status_wrapper + .bot_divider {
+    display: none;
+}
+
 /* Icon which displays the status of the mojang services. */
 #mojang_status_icon {
     font-size: 30px;
@@ -3387,7 +3461,7 @@ input:checked + .toggleSwitchSlider:before {
 * * */
 
 /* Main launch content container. */
-#landingContainer > #lower > #right #launch_content {
+#landingMain > #lower > #right #launch_content {
     position: relative;
     top: 25px;
     display: inline-flex;
@@ -3418,6 +3492,68 @@ input:checked + .toggleSwitchSlider:before {
     color: #c7c7c7;
     cursor: default;
     pointer-events: none;
+}
+
+#bnl_install_button {
+    background: none;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    line-height: 24px;
+    padding: 0px;
+    margin-left: 18px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-shadow: 0px 0px 0px #bebcbb;
+    transition: 0.25s ease;
+}
+#bnl_install_button:hover,
+#bnl_install_button:focus {
+    text-shadow: 0px 0px 20px #fff, 0px 0px 20px #fff;
+}
+#bnl_install_button:active {
+    color: #c7c7c7;
+    text-shadow: 0px 0px 20px #c7c7c7, 0px 0px 20px #c7c7c7;
+}
+#bnl_install_button:disabled {
+    color: #c7c7c7;
+    cursor: default;
+    pointer-events: none;
+}
+
+#bnl_repair_button {
+    background: none;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    line-height: 24px;
+    padding: 0px;
+    margin-left: 12px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-shadow: 0px 0px 0px #bebcbb;
+    transition: 0.25s ease;
+}
+#bnl_repair_button:hover,
+#bnl_repair_button:focus {
+    text-shadow: 0px 0px 20px #fff, 0px 0px 20px #fff;
+}
+#bnl_repair_button:active {
+    color: #c7c7c7;
+    text-shadow: 0px 0px 20px #c7c7c7, 0px 0px 20px #c7c7c7;
+}
+#bnl_repair_button:disabled {
+    color: #c7c7c7;
+    cursor: default;
+    pointer-events: none;
+}
+
+#landingContainer[data-game="minecraft"] #bnl_install_button {
+    display: none;
+}
+
+#landingContainer[data-game="minecraft"] #bnl_repair_button {
+    display: none;
 }
 
 /* Launch details main container, hidden until launch processing begins. */
@@ -3467,6 +3603,14 @@ input:checked + .toggleSwitchSlider:before {
 #server_selection_button:active {
     color: #c7c7c7;
     text-shadow: 0px 0px 20px #c7c7c7, 0px 0px 20px #c7c7c7, 0px 0px 20px #c7c7c7;
+}
+
+#landingContainer[data-game="blocknload"] #server_selection_button {
+    display: none;
+}
+
+#landingContainer[data-game="blocknload"] #launch_content .bot_divider {
+    display: none;
 }
 
 /* Progress bar styles. */

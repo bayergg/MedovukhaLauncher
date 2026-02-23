@@ -66,7 +66,7 @@ async function showMainUI(data){
 
     await prepareSettings(true)
     updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()))
-    refreshServerStatus()
+    refreshMinecraftServerStatus()
     setTimeout(() => {
         document.getElementById('frameBar').style.backgroundColor = 'rgba(0, 0, 0, 0.5)'
         document.body.style.backgroundImage = `url('assets/images/backgrounds/${document.body.getAttribute('bkid')}.jpg')`
@@ -104,7 +104,10 @@ async function showMainUI(data){
         
     }, 750)
     // Disable tabbing to the news container.
-    initNews().then(() => {
+    const initialNewsGame = ConfigManager.getSelectedGame != null
+        ? ConfigManager.getSelectedGame()
+        : 'minecraft'
+    initNews(initialNewsGame).then(() => {
         $('#newsContainer *').attr('tabindex', '-1')
     })
 }
@@ -134,8 +137,8 @@ function showFatalStartupError(){
  */
 function onDistroRefresh(data){
     updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()))
-    refreshServerStatus()
-    initNews()
+    refreshMinecraftServerStatus()
+    initNews('minecraft')
     syncModConfigurations(data)
     ensureJavaSettings(data)
 }

@@ -1,0 +1,22 @@
+"UserRoamingConfigStore"
+{
+	"JSClientStorage"
+	{
+		"timeline_intro"
+		{
+			"rtSeen"		"0"
+			"rtLinkDismissed"		"1744907776"
+		}
+	}
+	"Software"
+	{
+		"Valve"
+		{
+			"Steam"
+			{
+				"StartMenuShortcutCheck"		"1"
+				"DesktopShortcutCheck"		"1"
+			}
+		}
+	}
+}

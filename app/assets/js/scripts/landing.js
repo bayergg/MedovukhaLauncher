@@ -3,6 +3,7 @@
  */
 // Requirements
 const { URL }                 = require('url')
+const net                     = require('net')
 const {
     MojangRestAPI,
     getServerStatus
@@ -30,6 +31,7 @@ const {
 // Internal Requirements
 const DiscordWrapper          = require('./assets/js/discordwrapper')
 const ProcessBuilder          = require('./assets/js/processbuilder')
+const BnlManager              = require('./assets/js/bnl/bnlmanager')
 
 // Launch Elements
 const launch_content          = document.getElementById('launch_content')
@@ -38,18 +40,142 @@ const launch_progress         = document.getElementById('launch_progress')
 const launch_progress_label   = document.getElementById('launch_progress_label')
 const launch_details_text     = document.getElementById('launch_details_text')
 const server_selection_button = document.getElementById('server_selection_button')
+const bnl_install_button      = document.getElementById('bnl_install_button')
+const bnl_repair_button       = document.getElementById('bnl_repair_button')
 const user_text               = document.getElementById('user_text')
+const landing_container        = document.getElementById('landingContainer')
+const game_select_minecraft    = document.getElementById('gameSelectMinecraft')
+const game_select_bnl          = document.getElementById('gameSelectBnl')
+let newsButtonAlert
+let newsNavigateRight
+let newsNavigateLeft
+let newsContent
+let newsArticleTitle
+let newsArticleDate
+let newsArticleAuthor
+let newsArticleComments
+let newsNavigationStatus
+let newsArticleContentScrollable
+let nELoadSpan
 
 const loggerLanding = LoggerUtil.getLogger('Landing')
 
+const GAME_MINECRAFT = 'minecraft'
+const GAME_BNL = 'blocknload'
+const OS_PROGRESS_INDETERMINATE = 'indeterminate'
+const BNL_SERVER_HOST = '5.175.220.106'
+const BNL_SERVER_PORT = 28100
+const BNL_SERVER_LABEL = `&#8226; ${BNL_SERVER_HOST}:${BNL_SERVER_PORT}`
+
+function createLaunchState(){
+    return {
+        loading: false,
+        percent: 0,
+        detailsText: Lang.queryJS('landing.launchDetails'),
+        enabled: false,
+        osProgress: null
+    }
+}
+
+function createNewsState(){
+    return {
+        active: false,
+        glideCount: 0,
+        alertShown: false,
+        articles: null,
+        loadingListener: null,
+        status: 'idle',
+        currentIndex: 0,
+        loaded: false
+    }
+}
+
+const landingState = {
+    [GAME_MINECRAFT]: {
+        launch: createLaunchState(),
+        serverSelection: {
+            label: '&#8226; ' + Lang.queryJS('landing.selectedServer.loading'),
+            disabled: false
+        },
+        serverStatus: {
+            label: Lang.queryJS('landing.serverStatus.server'),
+            value: Lang.queryJS('landing.serverStatus.offline')
+        },
+        mojang: {
+            essentialHtml: '',
+            nonEssentialHtml: '',
+            statusColor: MojangRestAPI.statusToHex('grey')
+        },
+        news: createNewsState()
+    },
+    [GAME_BNL]: {
+        launch: createLaunchState(),
+        serverSelection: {
+            label: BNL_SERVER_LABEL,
+            disabled: false
+        },
+        serverStatus: {
+            label: Lang.queryJS('landing.serverStatus.server'),
+            value: Lang.queryJS('landing.serverStatus.offline')
+        },
+        mojang: {
+            essentialHtml: '',
+            nonEssentialHtml: '',
+            statusColor: MojangRestAPI.statusToHex('grey')
+        },
+        news: createNewsState()
+    }
+}
+
+let selectedGame = ConfigManager.getSelectedGame != null ? ConfigManager.getSelectedGame() : GAME_MINECRAFT
+if(selectedGame !== GAME_MINECRAFT && selectedGame !== GAME_BNL){
+    selectedGame = GAME_MINECRAFT
+    if(ConfigManager.setSelectedGame != null){
+        ConfigManager.setSelectedGame(selectedGame)
+        ConfigManager.save()
+    }
+}
+
+function getGameState(gameKey){
+    return landingState[gameKey]
+}
+
+function getNewsState(gameKey){
+    return landingState[gameKey].news
+}
+
+function isGameActive(gameKey){
+    return selectedGame === gameKey
+}
+
 /* Launch Progress Wrapper Functions */
+
+function applyOsProgress(gameKey){
+    if(!isGameActive(gameKey)){
+        return
+    }
+    const osProgress = getGameState(gameKey).launch.osProgress
+    if(osProgress === OS_PROGRESS_INDETERMINATE){
+        remote.getCurrentWindow().setProgressBar(2)
+    } else if(typeof osProgress === 'number'){
+        remote.getCurrentWindow().setProgressBar(osProgress/100)
+    } else {
+        remote.getCurrentWindow().setProgressBar(-1)
+    }
+}
 
 /**
  * Show/hide the loading area.
  * 
  * @param {boolean} loading True if the loading area should be shown, otherwise false.
+ * @param {string} gameKey The game key being updated.
  */
-function toggleLaunchArea(loading){
+function toggleLaunchArea(loading, gameKey = selectedGame){
+    const state = getGameState(gameKey)
+    state.launch.loading = loading
+    if(!isGameActive(gameKey)){
+        return
+    }
     if(loading){
         launch_details.style.display = 'flex'
         launch_content.style.display = 'none'
@@ -63,17 +189,28 @@ function toggleLaunchArea(loading){
  * Set the details text of the loading area.
  * 
  * @param {string} details The new text for the loading details.
+ * @param {string} gameKey The game key being updated.
  */
-function setLaunchDetails(details){
-    launch_details_text.innerHTML = details
+function setLaunchDetails(details, gameKey = selectedGame){
+    const state = getGameState(gameKey)
+    state.launch.detailsText = details
+    if(isGameActive(gameKey)){
+        launch_details_text.innerHTML = details
+    }
 }
 
 /**
  * Set the value of the loading progress bar and display that value.
  * 
  * @param {number} percent Percentage (0-100)
+ * @param {string} gameKey The game key being updated.
  */
-function setLaunchPercentage(percent){
+function setLaunchPercentage(percent, gameKey = selectedGame){
+    const state = getGameState(gameKey)
+    state.launch.percent = percent
+    if(!isGameActive(gameKey)){
+        return
+    }
     launch_progress.setAttribute('max', 100)
     launch_progress.setAttribute('value', percent)
     launch_progress_label.innerHTML = percent + '%'
@@ -83,47 +220,240 @@ function setLaunchPercentage(percent){
  * Set the value of the OS progress bar and display that on the UI.
  * 
  * @param {number} percent Percentage (0-100)
+ * @param {string} gameKey The game key being updated.
  */
-function setDownloadPercentage(percent){
-    remote.getCurrentWindow().setProgressBar(percent/100)
-    setLaunchPercentage(percent)
+function setDownloadPercentage(percent, gameKey = selectedGame){
+    const state = getGameState(gameKey)
+    state.launch.osProgress = percent
+    setLaunchPercentage(percent, gameKey)
+    applyOsProgress(gameKey)
+}
+
+function setDownloadIndeterminate(gameKey = selectedGame){
+    const state = getGameState(gameKey)
+    state.launch.osProgress = OS_PROGRESS_INDETERMINATE
+    applyOsProgress(gameKey)
+}
+
+function clearDownloadProgress(gameKey = selectedGame){
+    const state = getGameState(gameKey)
+    state.launch.osProgress = null
+    applyOsProgress(gameKey)
 }
 
 /**
  * Enable or disable the launch button.
  * 
  * @param {boolean} val True to enable, false to disable.
+ * @param {string} gameKey The game key being updated.
  */
-function setLaunchEnabled(val){
-    document.getElementById('launch_button').disabled = !val
+function setLaunchEnabled(val, gameKey = selectedGame){
+    const state = getGameState(gameKey)
+    state.launch.enabled = val
+    if(isGameActive(gameKey)){
+        document.getElementById('launch_button').disabled = !val
+    }
 }
+
+function renderLaunchState(gameKey){
+    if(!isGameActive(gameKey)){
+        return
+    }
+    const state = getGameState(gameKey)
+    if(state.launch.loading){
+        launch_details.style.display = 'flex'
+        launch_content.style.display = 'none'
+    } else {
+        launch_details.style.display = 'none'
+        launch_content.style.display = 'inline-flex'
+    }
+    launch_details_text.innerHTML = state.launch.detailsText
+    launch_progress.setAttribute('max', 100)
+    launch_progress.setAttribute('value', state.launch.percent)
+    launch_progress_label.innerHTML = state.launch.percent + '%'
+    document.getElementById('launch_button').disabled = !state.launch.enabled
+    applyOsProgress(gameKey)
+}
+
+function setServerSelectionState(gameKey, { label, disabled }){
+    const state = getGameState(gameKey)
+    if(label != null){
+        state.serverSelection.label = label
+    }
+    if(typeof disabled === 'boolean'){
+        state.serverSelection.disabled = disabled
+    }
+    if(isGameActive(gameKey)){
+        server_selection_button.innerHTML = state.serverSelection.label
+        server_selection_button.disabled = state.serverSelection.disabled
+    }
+}
+
+function renderServerStatus(gameKey, fade = false){
+    if(!isGameActive(gameKey)){
+        return
+    }
+    const status = getGameState(gameKey).serverStatus
+    if(fade){
+        $('#server_status_wrapper').fadeOut(250, () => {
+            document.getElementById('landingPlayerLabel').innerHTML = status.label
+            document.getElementById('player_count').innerHTML = status.value
+            $('#server_status_wrapper').fadeIn(500)
+        })
+    } else {
+        document.getElementById('landingPlayerLabel').innerHTML = status.label
+        document.getElementById('player_count').innerHTML = status.value
+    }
+}
+
+function renderMojangStatus(gameKey){
+    if(gameKey !== GAME_MINECRAFT || !isGameActive(gameKey)){
+        return
+    }
+    const mojang = getGameState(gameKey).mojang
+    document.getElementById('mojangStatusEssentialContainer').innerHTML = mojang.essentialHtml
+    document.getElementById('mojangStatusNonEssentialContainer').innerHTML = mojang.nonEssentialHtml
+    document.getElementById('mojang_status_icon').style.color = mojang.statusColor
+}
+
+function renderNewsAlert(gameKey){
+    if(!isGameActive(gameKey)){
+        return
+    }
+    if(newsButtonAlert == null){
+        return
+    }
+    const news = getNewsState(gameKey)
+    if(news.alertShown){
+        $(newsButtonAlert).fadeIn(250)
+    } else {
+        $(newsButtonAlert).hide()
+    }
+}
+
+function renderLandingForGame(gameKey){
+    renderLaunchState(gameKey)
+    setServerSelectionState(gameKey, {})
+    renderServerStatus(gameKey)
+    renderMojangStatus(gameKey)
+    renderNewsAlert(gameKey)
+    renderNewsState(gameKey, { animate: false })
+}
+
+function updateGameSelectionUI(){
+    if(landing_container != null){
+        landing_container.setAttribute('data-game', selectedGame)
+    }
+    if(game_select_minecraft != null){
+        if(selectedGame === GAME_MINECRAFT){
+            game_select_minecraft.setAttribute('selected', true)
+        } else {
+            game_select_minecraft.removeAttribute('selected')
+        }
+    }
+    if(game_select_bnl != null){
+        if(selectedGame === GAME_BNL){
+            game_select_bnl.setAttribute('selected', true)
+        } else {
+            game_select_bnl.removeAttribute('selected')
+        }
+    }
+}
+
+function updateLaunchControlsForGame(gameKey = selectedGame){
+    if(gameKey === GAME_BNL){
+        setServerSelectionState(gameKey, { label: BNL_SERVER_LABEL, disabled: true })
+        setLaunchEnabled(ConfigManager.getSelectedAccount() != null, gameKey)
+    } else {
+        setServerSelectionState(gameKey, { disabled: false })
+        setLaunchEnabled(ConfigManager.getSelectedServer() != null, gameKey)
+    }
+}
+
+function closeNewsIfActive(gameKey){
+    const news = getNewsState(gameKey)
+    if(!news.active){
+        return
+    }
+    $('#landingMain *').removeAttr('tabindex')
+    $('#newsContainer *').attr('tabindex', '-1')
+    slide_(false, gameKey)
+    news.active = false
+}
+
+function setSelectedGame(game){
+    if(game === selectedGame){
+        return
+    }
+    const previousGame = selectedGame
+    closeNewsIfActive(previousGame)
+
+    selectedGame = game
+    if(ConfigManager.setSelectedGame != null){
+        ConfigManager.setSelectedGame(game)
+        ConfigManager.save()
+    }
+    updateGameSelectionUI()
+    updateLaunchControlsForGame(game)
+    renderLandingForGame(game)
+    if(!getNewsState(game).loaded){
+        initNews(game)
+    }
+    if(game === GAME_MINECRAFT){
+        refreshMinecraftServerStatus()
+        refreshMojangStatuses()
+    } else {
+        refreshBnlServerStatus()
+    }
+}
+
+if(game_select_minecraft != null){
+    game_select_minecraft.addEventListener('click', () => {
+        setSelectedGame(GAME_MINECRAFT)
+    })
+}
+
+if(game_select_bnl != null){
+    game_select_bnl.addEventListener('click', () => {
+        setSelectedGame(GAME_BNL)
+    })
+}
+
+updateGameSelectionUI()
+updateLaunchControlsForGame(GAME_MINECRAFT)
+updateLaunchControlsForGame(GAME_BNL)
+renderLandingForGame(selectedGame)
 
 // Bind launch button
 document.getElementById('launch_button').addEventListener('click', async e => {
     loggerLanding.info('Launching game..')
     try {
+        if(selectedGame === GAME_BNL){
+            await launchBlockNLoad()
+            return
+        }
         const server = (await DistroAPI.getDistribution()).getServerById(ConfigManager.getSelectedServer())
         const jExe = ConfigManager.getJavaExecutable(ConfigManager.getSelectedServer())
         if(jExe == null){
-            await asyncSystemScan(server.effectiveJavaOptions)
+            await asyncSystemScan(server.effectiveJavaOptions, true, GAME_MINECRAFT)
         } else {
 
-            setLaunchDetails(Lang.queryJS('landing.launch.pleaseWait'))
-            toggleLaunchArea(true)
-            setLaunchPercentage(0, 100)
+            setLaunchDetails(Lang.queryJS('landing.launch.pleaseWait'), GAME_MINECRAFT)
+            toggleLaunchArea(true, GAME_MINECRAFT)
+            setLaunchPercentage(0, GAME_MINECRAFT)
 
             const details = await validateSelectedJvm(ensureJavaDirIsRoot(jExe), server.effectiveJavaOptions.supported)
             if(details != null){
                 loggerLanding.info('Jvm Details', details)
-                await dlAsync()
+                await dlAsync(true, GAME_MINECRAFT)
 
             } else {
-                await asyncSystemScan(server.effectiveJavaOptions)
+                await asyncSystemScan(server.effectiveJavaOptions, true, GAME_MINECRAFT)
             }
         }
     } catch(err) {
         loggerLanding.error('Unhandled error in during launch process.', err)
-        showLaunchFailure(Lang.queryJS('landing.launch.failureTitle'), Lang.queryJS('landing.launch.failureText'))
+        showLaunchFailure(Lang.queryJS('landing.launch.failureTitle'), Lang.queryJS('landing.launch.failureText'), GAME_MINECRAFT)
     }
 })
 
@@ -153,6 +483,8 @@ function updateSelectedAccount(authUser){
         }
     }
     user_text.innerHTML = username
+    updateLaunchControlsForGame(GAME_MINECRAFT)
+    updateLaunchControlsForGame(GAME_BNL)
 }
 updateSelectedAccount(ConfigManager.getSelectedAccount())
 
@@ -163,17 +495,65 @@ function updateSelectedServer(serv){
     }
     ConfigManager.setSelectedServer(serv != null ? serv.rawServer.id : null)
     ConfigManager.save()
-    server_selection_button.innerHTML = '&#8226; ' + (serv != null ? serv.rawServer.name : Lang.queryJS('landing.noSelection'))
+    const label = '&#8226; ' + (serv != null ? serv.rawServer.name : Lang.queryJS('landing.noSelection'))
+    setServerSelectionState(GAME_MINECRAFT, { label })
     if(getCurrentView() === VIEWS.settings){
         animateSettingsTabRefresh()
     }
-    setLaunchEnabled(serv != null)
+    setLaunchEnabled(serv != null, GAME_MINECRAFT)
 }
+
+async function chooseBnlInstallRoot(){
+    const options = {
+        properties: ['openDirectory'],
+        title: Lang.queryJS('landing.bnlInstallDialogTitle')
+    }
+    const currentRoot = ConfigManager.getBnlInstallRoot?.()
+    if(currentRoot != null){
+        options.defaultPath = currentRoot
+    }
+    const res = await remote.dialog.showOpenDialog(remote.getCurrentWindow(), options)
+    if(res.canceled){
+        return
+    }
+    const selectedPath = res.filePaths?.[0]
+    if(!selectedPath){
+        return
+    }
+    if(ConfigManager.setBnlInstallRoot != null){
+        ConfigManager.setBnlInstallRoot(selectedPath)
+        ConfigManager.save()
+    }
+}
+
 // Real text is set in uibinder.js on distributionIndexDone.
-server_selection_button.innerHTML = '&#8226; ' + Lang.queryJS('landing.selectedServer.loading')
+setServerSelectionState(GAME_MINECRAFT, { label: '&#8226; ' + Lang.queryJS('landing.selectedServer.loading') })
 server_selection_button.onclick = async e => {
     e.target.blur()
+    if(selectedGame !== GAME_MINECRAFT){
+        return
+    }
     await toggleServerSelection(true)
+}
+
+if(bnl_install_button != null){
+    bnl_install_button.addEventListener('click', async e => {
+        e.target.blur()
+        if(selectedGame !== GAME_BNL){
+            return
+        }
+        await chooseBnlInstallRoot()
+    })
+}
+
+if(bnl_repair_button != null){
+    bnl_repair_button.addEventListener('click', async e => {
+        e.target.blur()
+        if(selectedGame !== GAME_BNL){
+            return
+        }
+        await repairBlockNLoad()
+    })
 }
 
 // Update Mojang Status Color
@@ -230,17 +610,27 @@ const refreshMojangStatuses = async function(){
         }
     }
     
-    document.getElementById('mojangStatusEssentialContainer').innerHTML = tooltipEssentialHTML
-    document.getElementById('mojangStatusNonEssentialContainer').innerHTML = tooltipNonEssentialHTML
-    document.getElementById('mojang_status_icon').style.color = MojangRestAPI.statusToHex(status)
+    const mojangState = getGameState(GAME_MINECRAFT).mojang
+    mojangState.essentialHtml = tooltipEssentialHTML
+    mojangState.nonEssentialHtml = tooltipNonEssentialHTML
+    mojangState.statusColor = MojangRestAPI.statusToHex(status)
+    renderMojangStatus(GAME_MINECRAFT)
 }
 
-const refreshServerStatus = async (fade = false) => {
-    loggerLanding.info('Refreshing Server Status')
+const refreshMinecraftServerStatus = async (fade = false) => {
+    loggerLanding.info('Refreshing Minecraft Server Status')
     const serv = (await DistroAPI.getDistribution()).getServerById(ConfigManager.getSelectedServer())
 
     let pLabel = Lang.queryJS('landing.serverStatus.server')
     let pVal = Lang.queryJS('landing.serverStatus.offline')
+
+    if(serv == null){
+        const state = getGameState(GAME_MINECRAFT).serverStatus
+        state.label = pLabel
+        state.value = pVal
+        renderServerStatus(GAME_MINECRAFT, fade)
+        return
+    }
 
     try {
 
@@ -253,17 +643,51 @@ const refreshServerStatus = async (fade = false) => {
         loggerLanding.warn('Unable to refresh server status, assuming offline.')
         loggerLanding.debug(err)
     }
-    if(fade){
-        $('#server_status_wrapper').fadeOut(250, () => {
-            document.getElementById('landingPlayerLabel').innerHTML = pLabel
-            document.getElementById('player_count').innerHTML = pVal
-            $('#server_status_wrapper').fadeIn(500)
-        })
-    } else {
-        document.getElementById('landingPlayerLabel').innerHTML = pLabel
-        document.getElementById('player_count').innerHTML = pVal
+    const state = getGameState(GAME_MINECRAFT).serverStatus
+    state.label = pLabel
+    state.value = pVal
+    renderServerStatus(GAME_MINECRAFT, fade)
+}
+
+const refreshServerStatus = refreshMinecraftServerStatus
+
+const refreshBnlServerStatus = async (fade = false) => {
+    loggerLanding.info('Refreshing Block N Load Server Status')
+    const state = getGameState(GAME_BNL).serverStatus
+    state.label = Lang.queryJS('landing.serverStatus.server')
+    state.value = Lang.queryJS('landing.serverStatus.offline')
+
+    try {
+        const online = await checkBnlServerOnline(BNL_SERVER_HOST, BNL_SERVER_PORT)
+        state.value = online ? Lang.queryJS('landing.serverStatus.online') : Lang.queryJS('landing.serverStatus.offline')
+    } catch (err) {
+        loggerLanding.warn('Unable to refresh Block N Load server status, assuming offline.')
+        loggerLanding.debug(err)
     }
-    
+
+    renderServerStatus(GAME_BNL, fade)
+}
+
+function checkBnlServerOnline(host, port, timeoutMs = 2000){
+    return new Promise(resolve => {
+        let settled = false
+        const socket = new net.Socket()
+
+        const finish = (online) => {
+            if(settled){
+                return
+            }
+            settled = true
+            socket.destroy()
+            resolve(online)
+        }
+
+        socket.setTimeout(timeoutMs)
+        socket.once('connect', () => finish(true))
+        socket.once('timeout', () => finish(false))
+        socket.once('error', () => finish(false))
+        socket.connect(Number(port), host)
+    })
 }
 
 refreshMojangStatuses()
@@ -272,7 +696,8 @@ refreshMojangStatuses()
 // Refresh statuses every hour. The status page itself refreshes every day so...
 let mojangStatusListener = setInterval(() => refreshMojangStatuses(true), 60*60*1000)
 // Set refresh rate to once every 5 minutes.
-let serverStatusListener = setInterval(() => refreshServerStatus(true), 300000)
+let minecraftServerStatusListener = setInterval(() => refreshMinecraftServerStatus(true), 300000)
+let bnlServerStatusListener = setInterval(() => refreshBnlServerStatus(true), 300000)
 
 /**
  * Shows an error overlay, toggles off the launch area.
@@ -280,7 +705,7 @@ let serverStatusListener = setInterval(() => refreshServerStatus(true), 300000)
  * @param {string} title The overlay title.
  * @param {string} desc The overlay description.
  */
-function showLaunchFailure(title, desc){
+function showLaunchFailure(title, desc, gameKey = selectedGame){
     setOverlayContent(
         title,
         desc,
@@ -288,7 +713,8 @@ function showLaunchFailure(title, desc){
     )
     setOverlayHandler(null)
     toggleOverlay(true)
-    toggleLaunchArea(false)
+    toggleLaunchArea(false, gameKey)
+    clearDownloadProgress(gameKey)
 }
 
 /* System (Java) Scan */
@@ -298,11 +724,11 @@ function showLaunchFailure(title, desc){
  * 
  * @param {boolean} launchAfter Whether we should begin to launch after scanning. 
  */
-async function asyncSystemScan(effectiveJavaOptions, launchAfter = true){
+async function asyncSystemScan(effectiveJavaOptions, launchAfter = true, gameKey = GAME_MINECRAFT){
 
-    setLaunchDetails(Lang.queryJS('landing.systemScan.checking'))
-    toggleLaunchArea(true)
-    setLaunchPercentage(0, 100)
+    setLaunchDetails(Lang.queryJS('landing.systemScan.checking'), gameKey)
+    toggleLaunchArea(true, gameKey)
+    setLaunchPercentage(0, gameKey)
 
     const jvmDetails = await discoverBestJvmInstallation(
         ConfigManager.getDataDirectory(),
@@ -319,14 +745,14 @@ async function asyncSystemScan(effectiveJavaOptions, launchAfter = true){
             Lang.queryJS('landing.systemScan.installJavaManually')
         )
         setOverlayHandler(() => {
-            setLaunchDetails(Lang.queryJS('landing.systemScan.javaDownloadPrepare'))
+            setLaunchDetails(Lang.queryJS('landing.systemScan.javaDownloadPrepare'), gameKey)
             toggleOverlay(false)
             
             try {
-                downloadJava(effectiveJavaOptions, launchAfter)
+                downloadJava(effectiveJavaOptions, launchAfter, gameKey)
             } catch(err) {
                 loggerLanding.error('Unhandled error in Java Download', err)
-                showLaunchFailure(Lang.queryJS('landing.systemScan.javaDownloadFailureTitle'), Lang.queryJS('landing.systemScan.javaDownloadFailureText'))
+                showLaunchFailure(Lang.queryJS('landing.systemScan.javaDownloadFailureTitle'), Lang.queryJS('landing.systemScan.javaDownloadFailureText'), gameKey)
             }
         })
         setDismissHandler(() => {
@@ -339,13 +765,13 @@ async function asyncSystemScan(effectiveJavaOptions, launchAfter = true){
                     Lang.queryJS('landing.systemScan.javaRequiredCancel')
                 )
                 setOverlayHandler(() => {
-                    toggleLaunchArea(false)
+                    toggleLaunchArea(false, gameKey)
                     toggleOverlay(false)
                 })
                 setDismissHandler(() => {
                     toggleOverlay(false, true)
 
-                    asyncSystemScan(effectiveJavaOptions, launchAfter)
+                    asyncSystemScan(effectiveJavaOptions, launchAfter, gameKey)
                 })
                 $('#overlayContent').fadeIn(250)
             })
@@ -365,13 +791,13 @@ async function asyncSystemScan(effectiveJavaOptions, launchAfter = true){
         // TODO Callback hell, refactor
         // TODO Move this out, separate concerns.
         if(launchAfter){
-            await dlAsync()
+            await dlAsync(true, gameKey)
         }
     }
 
 }
 
-async function downloadJava(effectiveJavaOptions, launchAfter = true) {
+async function downloadJava(effectiveJavaOptions, launchAfter = true, gameKey = GAME_MINECRAFT) {
 
     // TODO Error handling.
     // asset can be null.
@@ -387,9 +813,9 @@ async function downloadJava(effectiveJavaOptions, launchAfter = true) {
     let received = 0
     await downloadFile(asset.url, asset.path, ({ transferred }) => {
         received = transferred
-        setDownloadPercentage(Math.trunc((transferred/asset.size)*100))
+        setDownloadPercentage(Math.trunc((transferred/asset.size)*100), gameKey)
     })
-    setDownloadPercentage(100)
+    setDownloadPercentage(100, gameKey)
 
     if(received != asset.size) {
         loggerLanding.warn(`Java Download: Expected ${asset.size} bytes but received ${received}`)
@@ -402,37 +828,149 @@ async function downloadJava(effectiveJavaOptions, launchAfter = true) {
 
     // Extract
     // Show installing progress bar.
-    remote.getCurrentWindow().setProgressBar(2)
+    setDownloadIndeterminate(gameKey)
 
     // Wait for extration to complete.
     const eLStr = Lang.queryJS('landing.downloadJava.extractingJava')
     let dotStr = ''
-    setLaunchDetails(eLStr)
+    setLaunchDetails(eLStr, gameKey)
     const extractListener = setInterval(() => {
         if(dotStr.length >= 3){
             dotStr = ''
         } else {
             dotStr += '.'
         }
-        setLaunchDetails(eLStr + dotStr)
+        setLaunchDetails(eLStr + dotStr, gameKey)
     }, 750)
 
     const newJavaExec = await extractJdk(asset.path)
 
     // Extraction complete, remove the loading from the OS progress bar.
-    remote.getCurrentWindow().setProgressBar(-1)
+    clearDownloadProgress(gameKey)
 
     // Extraction completed successfully.
     ConfigManager.setJavaExecutable(ConfigManager.getSelectedServer(), newJavaExec)
     ConfigManager.save()
 
     clearInterval(extractListener)
-    setLaunchDetails(Lang.queryJS('landing.downloadJava.javaInstalled'))
+    setLaunchDetails(Lang.queryJS('landing.downloadJava.javaInstalled'), gameKey)
 
     // TODO Callback hell
     // Refactor the launch functions
-    asyncSystemScan(effectiveJavaOptions, launchAfter)
+    asyncSystemScan(effectiveJavaOptions, launchAfter, gameKey)
 
+}
+
+async function launchBlockNLoad(){
+    const gameKey = GAME_BNL
+    const authUser = ConfigManager.getSelectedAccount()
+    if(authUser == null){
+        showLaunchFailure(Lang.queryJS('landing.bnlNoAccountTitle'), Lang.queryJS('landing.bnlNoAccountText'), gameKey)
+        return
+    }
+
+    const nickname = authUser.displayName != null ? authUser.displayName.trim() : authUser.username.trim()
+
+    const updateProgress = (percent) => {
+        if(percent == null || Number.isNaN(percent)){
+            setDownloadIndeterminate(gameKey)
+            return
+        }
+        const clamped = Math.min(100, Math.max(0, Math.trunc(percent)))
+        setDownloadPercentage(clamped, gameKey)
+    }
+
+    try {
+        setLaunchDetails(Lang.queryJS('landing.bnlPreparing'), gameKey)
+        toggleLaunchArea(true, gameKey)
+        setLaunchPercentage(0, gameKey)
+        setDownloadIndeterminate(gameKey)
+
+        const result = await BnlManager.prepareLaunch({
+            nickname,
+            onStatus: (message) => setLaunchDetails(message, gameKey),
+            onProgress: updateProgress,
+            messages: {
+                preparing: Lang.queryJS('landing.bnlPreparing'),
+                validating: Lang.queryJS('landing.bnlValidating'),
+                downloading: Lang.queryJS('landing.bnlDownloading'),
+                verifying: Lang.queryJS('landing.bnlVerifyingUpdate'),
+                committing: Lang.queryJS('landing.bnlCommittingUpdate'),
+                patching: Lang.queryJS('landing.bnlPatching'),
+                goldberg: Lang.queryJS('landing.bnlGoldberg')
+            }
+        })
+
+        setLaunchDetails(Lang.queryJS('landing.bnlLaunching'), gameKey)
+
+        const bnlProc = BnlManager.launchGame(result.installRoot)
+        if(bnlProc != null){
+            bnlProc.stdout?.on('data', (data) => {
+                data.trim().split('\n').forEach(x => console.log(`\x1b[32m[BlockNLoad]\x1b[0m ${x}`))
+            })
+            bnlProc.stderr?.on('data', (data) => {
+                data.trim().split('\n').forEach(x => console.log(`\x1b[31m[BlockNLoad]\x1b[0m ${x}`))
+            })
+        }
+
+        setLaunchDetails(Lang.queryJS('landing.bnlDoneEnjoy'), gameKey)
+        toggleLaunchArea(false, gameKey)
+    } catch (err) {
+        loggerLanding.error('Block N Load launch failed.', err)
+        showLaunchFailure(Lang.queryJS('landing.bnlErrorTitle'), err.displayable || err.message || Lang.queryJS('landing.bnlErrorText'), gameKey)
+    } finally {
+        clearDownloadProgress(gameKey)
+    }
+}
+
+async function repairBlockNLoad(){
+    const gameKey = GAME_BNL
+    const authUser = ConfigManager.getSelectedAccount()
+    if(authUser == null){
+        showLaunchFailure(Lang.queryJS('landing.bnlNoAccountTitle'), Lang.queryJS('landing.bnlNoAccountText'), gameKey)
+        return
+    }
+
+    const nickname = authUser.displayName != null ? authUser.displayName.trim() : authUser.username.trim()
+
+    const updateProgress = (percent) => {
+        if(percent == null || Number.isNaN(percent)){
+            setDownloadIndeterminate(gameKey)
+            return
+        }
+        const clamped = Math.min(100, Math.max(0, Math.trunc(percent)))
+        setDownloadPercentage(clamped, gameKey)
+    }
+
+    try {
+        setLaunchDetails(Lang.queryJS('landing.bnlPreparing'), gameKey)
+        toggleLaunchArea(true, gameKey)
+        setLaunchPercentage(0, gameKey)
+        setDownloadIndeterminate(gameKey)
+
+        await BnlManager.repairGame({
+            nickname,
+            onStatus: (message) => setLaunchDetails(message, gameKey),
+            onProgress: updateProgress,
+            messages: {
+                preparing: Lang.queryJS('landing.bnlPreparing'),
+                validating: Lang.queryJS('landing.bnlValidating'),
+                downloading: Lang.queryJS('landing.bnlDownloading'),
+                verifying: Lang.queryJS('landing.bnlVerifyingUpdate'),
+                committing: Lang.queryJS('landing.bnlCommittingUpdate'),
+                patching: Lang.queryJS('landing.bnlPatching'),
+                goldberg: Lang.queryJS('landing.bnlGoldberg')
+            }
+        })
+
+        setLaunchDetails(Lang.queryJS('landing.bnlRepairComplete'), gameKey)
+        toggleLaunchArea(false, gameKey)
+    } catch (err) {
+        loggerLanding.error('Block N Load repair failed.', err)
+        showLaunchFailure(Lang.queryJS('landing.bnlErrorTitle'), err.displayable || err.message || Lang.queryJS('landing.bnlErrorText'), gameKey)
+    } finally {
+        clearDownloadProgress(gameKey)
+    }
 }
 
 // Keep reference to Minecraft Process
@@ -445,14 +983,14 @@ const GAME_JOINED_REGEX = /\[.+\]: Sound engine started/
 const GAME_LAUNCH_REGEX = /^\[.+\]: (?:MinecraftForge .+ Initialized|ModLauncher .+ starting: .+|Loading Minecraft .+ with Fabric Loader .+)$/
 const MIN_LINGER = 5000
 
-async function dlAsync(login = true) {
+async function dlAsync(login = true, gameKey = GAME_MINECRAFT) {
 
     // Login parameter is temporary for debug purposes. Allows testing the validation/downloads without
     // launching the game.
 
     const loggerLaunchSuite = LoggerUtil.getLogger('LaunchSuite')
 
-    setLaunchDetails(Lang.queryJS('landing.dlAsync.loadingServerInfo'))
+    setLaunchDetails(Lang.queryJS('landing.dlAsync.loadingServerInfo'), gameKey)
 
     let distro
 
@@ -461,7 +999,7 @@ async function dlAsync(login = true) {
         onDistroRefresh(distro)
     } catch(err) {
         loggerLaunchSuite.error('Unable to refresh distribution index.', err)
-        showLaunchFailure(Lang.queryJS('landing.dlAsync.fatalError'), Lang.queryJS('landing.dlAsync.unableToLoadDistributionIndex'))
+        showLaunchFailure(Lang.queryJS('landing.dlAsync.fatalError'), Lang.queryJS('landing.dlAsync.unableToLoadDistributionIndex'), gameKey)
         return
     }
 
@@ -474,9 +1012,9 @@ async function dlAsync(login = true) {
         }
     }
 
-    setLaunchDetails(Lang.queryJS('landing.dlAsync.pleaseWait'))
-    toggleLaunchArea(true)
-    setLaunchPercentage(0, 100)
+    setLaunchDetails(Lang.queryJS('landing.dlAsync.pleaseWait'), gameKey)
+    toggleLaunchArea(true, gameKey)
+    setLaunchPercentage(0, gameKey)
 
     const fullRepairModule = new FullRepair(
         ConfigManager.getCommonDirectory(),
@@ -490,42 +1028,42 @@ async function dlAsync(login = true) {
 
     fullRepairModule.childProcess.on('error', (err) => {
         loggerLaunchSuite.error('Error during launch', err)
-        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), err.message || Lang.queryJS('landing.dlAsync.errorDuringLaunchText'))
+        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), err.message || Lang.queryJS('landing.dlAsync.errorDuringLaunchText'), gameKey)
     })
     fullRepairModule.childProcess.on('close', (code, _signal) => {
         if(code !== 0){
             loggerLaunchSuite.error(`Full Repair Module exited with code ${code}, assuming error.`)
-            showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.seeConsoleForDetails'))
+            showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.seeConsoleForDetails'), gameKey)
         }
     })
 
     loggerLaunchSuite.info('Validating files.')
-    setLaunchDetails(Lang.queryJS('landing.dlAsync.validatingFileIntegrity'))
+    setLaunchDetails(Lang.queryJS('landing.dlAsync.validatingFileIntegrity'), gameKey)
     let invalidFileCount = 0
     try {
         invalidFileCount = await fullRepairModule.verifyFiles(percent => {
-            setLaunchPercentage(percent)
+            setLaunchPercentage(percent, gameKey)
         })
-        setLaunchPercentage(100)
+        setLaunchPercentage(100, gameKey)
     } catch (err) {
         loggerLaunchSuite.error('Error during file validation.')
-        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringFileVerificationTitle'), err.displayable || Lang.queryJS('landing.dlAsync.seeConsoleForDetails'))
+        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringFileVerificationTitle'), err.displayable || Lang.queryJS('landing.dlAsync.seeConsoleForDetails'), gameKey)
         return
     }
     
 
     if(invalidFileCount > 0) {
         loggerLaunchSuite.info('Downloading files.')
-        setLaunchDetails(Lang.queryJS('landing.dlAsync.downloadingFiles'))
-        setLaunchPercentage(0)
+        setLaunchDetails(Lang.queryJS('landing.dlAsync.downloadingFiles'), gameKey)
+        setLaunchPercentage(0, gameKey)
         try {
             await fullRepairModule.download(percent => {
-                setDownloadPercentage(percent)
+                setDownloadPercentage(percent, gameKey)
             })
-            setDownloadPercentage(100)
+            setDownloadPercentage(100, gameKey)
         } catch(err) {
             loggerLaunchSuite.error('Error during file download.')
-            showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringFileDownloadTitle'), err.displayable || Lang.queryJS('landing.dlAsync.seeConsoleForDetails'))
+            showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringFileDownloadTitle'), err.displayable || Lang.queryJS('landing.dlAsync.seeConsoleForDetails'), gameKey)
             return
         }
     } else {
@@ -533,11 +1071,11 @@ async function dlAsync(login = true) {
     }
 
     // Remove download bar.
-    remote.getCurrentWindow().setProgressBar(-1)
+    clearDownloadProgress(gameKey)
 
     fullRepairModule.destroyReceiver()
 
-    setLaunchDetails(Lang.queryJS('landing.dlAsync.preparingToLaunch'))
+    setLaunchDetails(Lang.queryJS('landing.dlAsync.preparingToLaunch'), gameKey)
 
     const mojangIndexProcessor = new MojangIndexProcessor(
         ConfigManager.getCommonDirectory(),
@@ -556,13 +1094,13 @@ async function dlAsync(login = true) {
         const authUser = ConfigManager.getSelectedAccount()
         loggerLaunchSuite.info(`Sending selected account (${authUser.displayName}) to ProcessBuilder.`)
         let pb = new ProcessBuilder(serv, versionData, modLoaderData, authUser, remote.app.getVersion())
-        setLaunchDetails(Lang.queryJS('landing.dlAsync.launchingGame'))
+        setLaunchDetails(Lang.queryJS('landing.dlAsync.launchingGame'), gameKey)
 
         // const SERVER_JOINED_REGEX = /\[.+\]: \[CHAT\] [a-zA-Z0-9_]{1,16} joined the game/
         const SERVER_JOINED_REGEX = new RegExp(`\\[.+\\]: \\[CHAT\\] ${authUser.displayName} joined the game`)
 
         const onLoadComplete = () => {
-            toggleLaunchArea(false)
+            toggleLaunchArea(false, gameKey)
             if(hasRPC){
                 DiscordWrapper.updateDetails(Lang.queryJS('landing.discord.loading'))
                 proc.stdout.on('data', gameStateChange)
@@ -601,7 +1139,7 @@ async function dlAsync(login = true) {
             data = data.trim()
             if(data.indexOf('Could not find or load main class net.minecraft.launchwrapper.Launch') > -1){
                 loggerLaunchSuite.error('Game launch failed, LaunchWrapper was not downloaded properly.')
-                showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.launchWrapperNotDownloaded'))
+                showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.launchWrapperNotDownloaded'), gameKey)
             }
         }
 
@@ -613,7 +1151,7 @@ async function dlAsync(login = true) {
             proc.stdout.on('data', tempListener)
             proc.stderr.on('data', gameErrorListener)
 
-            setLaunchDetails(Lang.queryJS('landing.dlAsync.doneEnjoyServer'))
+            setLaunchDetails(Lang.queryJS('landing.dlAsync.doneEnjoyServer'), gameKey)
 
             // Init Discord Hook
             if(distro.rawDistribution.discord != null && serv.rawServer.discord != null){
@@ -630,7 +1168,7 @@ async function dlAsync(login = true) {
         } catch(err) {
 
             loggerLaunchSuite.error('Error during launch', err)
-            showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.checkConsoleForDetails'))
+            showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.checkConsoleForDetails'), gameKey)
 
         }
     }
@@ -642,34 +1180,34 @@ async function dlAsync(login = true) {
  */
 
 // DOM Cache
-const newsContent                   = document.getElementById('newsContent')
-const newsArticleTitle              = document.getElementById('newsArticleTitle')
-const newsArticleDate               = document.getElementById('newsArticleDate')
-const newsArticleAuthor             = document.getElementById('newsArticleAuthor')
-const newsArticleComments           = document.getElementById('newsArticleComments')
-const newsNavigationStatus          = document.getElementById('newsNavigationStatus')
-const newsArticleContentScrollable  = document.getElementById('newsArticleContentScrollable')
-const nELoadSpan                    = document.getElementById('nELoadSpan')
-
-// News slide caches.
-let newsActive = false
-let newsGlideCount = 0
+newsContent                   = document.getElementById('newsContent')
+newsArticleTitle              = document.getElementById('newsArticleTitle')
+newsArticleDate               = document.getElementById('newsArticleDate')
+newsArticleAuthor             = document.getElementById('newsArticleAuthor')
+newsArticleComments           = document.getElementById('newsArticleComments')
+newsNavigationStatus          = document.getElementById('newsNavigationStatus')
+newsArticleContentScrollable  = document.getElementById('newsArticleContentScrollable')
+nELoadSpan                    = document.getElementById('nELoadSpan')
+newsButtonAlert               = document.getElementById('newsButtonAlert')
+newsNavigateRight             = document.getElementById('newsNavigateRight')
+newsNavigateLeft              = document.getElementById('newsNavigateLeft')
 
 /**
  * Show the news UI via a slide animation.
  * 
  * @param {boolean} up True to slide up, otherwise false. 
  */
-function slide_(up){
-    const lCUpper = document.querySelector('#landingContainer > #upper')
-    const lCLLeft = document.querySelector('#landingContainer > #lower > #left')
-    const lCLCenter = document.querySelector('#landingContainer > #lower > #center')
-    const lCLRight = document.querySelector('#landingContainer > #lower > #right')
-    const newsBtn = document.querySelector('#landingContainer > #lower > #center #content')
-    const landingContainer = document.getElementById('landingContainer')
-    const newsContainer = document.querySelector('#landingContainer > #newsContainer')
+function slide_(up, gameKey = selectedGame){
+    const state = getNewsState(gameKey)
+    const lCUpper = document.querySelector('#landingMain > #upper')
+    const lCLLeft = document.querySelector('#landingMain > #lower > #left')
+    const lCLCenter = document.querySelector('#landingMain > #lower > #center')
+    const lCLRight = document.querySelector('#landingMain > #lower > #right')
+    const newsBtn = document.querySelector('#landingMain > #lower > #center #content')
+    const landingContainer = document.getElementById('landingMain')
+    const newsContainer = document.querySelector('#landingMain > #newsContainer')
 
-    newsGlideCount++
+    state.glideCount++
 
     if(up){
         lCUpper.style.top = '-200vh'
@@ -682,15 +1220,15 @@ function slide_(up){
         //landingContainer.style.background = 'rgba(29, 29, 29, 0.55)'
         landingContainer.style.background = 'rgba(0, 0, 0, 0.50)'
         setTimeout(() => {
-            if(newsGlideCount === 1){
+            if(state.glideCount === 1){
                 lCLCenter.style.transition = 'none'
                 newsBtn.style.transition = 'none'
             }
-            newsGlideCount--
+            state.glideCount--
         }, 2000)
     } else {
         setTimeout(() => {
-            newsGlideCount--
+            state.glideCount--
         }, 2000)
         landingContainer.style.background = null
         lCLCenter.style.transition = null
@@ -706,69 +1244,148 @@ function slide_(up){
 
 // Bind news button.
 document.getElementById('newsButton').onclick = () => {
+    const state = getNewsState(selectedGame)
     // Toggle tabbing.
-    if(newsActive){
-        $('#landingContainer *').removeAttr('tabindex')
+    if(state.active){
+        $('#landingMain *').removeAttr('tabindex')
         $('#newsContainer *').attr('tabindex', '-1')
     } else {
-        $('#landingContainer *').attr('tabindex', '-1')
+        $('#landingMain *').attr('tabindex', '-1')
         $('#newsContainer, #newsContainer *, #lower, #lower #center *').removeAttr('tabindex')
-        if(newsAlertShown){
+        if(state.alertShown){
             $('#newsButtonAlert').fadeOut(2000)
-            newsAlertShown = false
-            ConfigManager.setNewsCacheDismissed(true)
+            state.alertShown = false
+            ConfigManager.setNewsCacheDismissed(true, selectedGame)
             ConfigManager.save()
         }
     }
-    slide_(!newsActive)
-    newsActive = !newsActive
+    slide_(!state.active, selectedGame)
+    state.active = !state.active
 }
 
-// Array to store article meta.
-let newsArr = null
-
-// News load animation listener.
-let newsLoadingListener = null
+// Array to store article meta per game is stored in landingState.
 
 /**
  * Set the news loading animation.
  * 
+ * @param {string} gameKey The game key being updated.
  * @param {boolean} val True to set loading animation, otherwise false.
  */
-function setNewsLoading(val){
+function setNewsLoading(gameKey, val){
+    const state = getNewsState(gameKey)
     if(val){
         const nLStr = Lang.queryJS('landing.news.checking')
         let dotStr = '..'
-        nELoadSpan.innerHTML = nLStr + dotStr
-        newsLoadingListener = setInterval(() => {
+        if(isGameActive(gameKey)){
+            nELoadSpan.innerHTML = nLStr + dotStr
+        }
+        if(state.loadingListener != null){
+            clearInterval(state.loadingListener)
+        }
+        state.loadingListener = setInterval(() => {
             if(dotStr.length >= 3){
                 dotStr = ''
             } else {
                 dotStr += '.'
             }
-            nELoadSpan.innerHTML = nLStr + dotStr
+            if(isGameActive(gameKey)){
+                nELoadSpan.innerHTML = nLStr + dotStr
+            }
         }, 750)
     } else {
-        if(newsLoadingListener != null){
-            clearInterval(newsLoadingListener)
-            newsLoadingListener = null
+        if(state.loadingListener != null){
+            clearInterval(state.loadingListener)
+            state.loadingListener = null
         }
     }
 }
 
+function switchNewsArticle(forward){
+    const state = getNewsState(selectedGame)
+    if(state.articles == null || state.articles.length === 0){
+        return
+    }
+    const currentIndex = Number.isInteger(state.currentIndex) ? state.currentIndex : 0
+    const maxIndex = state.articles.length - 1
+    const nextIndex = forward
+        ? (currentIndex >= maxIndex ? 0 : currentIndex + 1)
+        : (currentIndex <= 0 ? maxIndex : currentIndex - 1)
+    displayArticle(state.articles[nextIndex], nextIndex + 1, selectedGame)
+}
+
+if(newsNavigateRight != null){
+    newsNavigateRight.onclick = () => switchNewsArticle(true)
+}
+if(newsNavigateLeft != null){
+    newsNavigateLeft.onclick = () => switchNewsArticle(false)
+}
+
+async function renderNewsState(gameKey, { animate = true } = {}){
+    if(!isGameActive(gameKey)){
+        return
+    }
+    if(newsContent == null || newsArticleTitle == null || newsArticleContentScrollable == null){
+        return
+    }
+    const state = getNewsState(gameKey)
+
+    const show = async (selector) => {
+        if(animate){
+            await $(selector).fadeIn(250).promise()
+        } else {
+            $(selector).show()
+        }
+    }
+
+    const hide = async (selector) => {
+        if(animate){
+            await $(selector).fadeOut(250).promise()
+        } else {
+            $(selector).hide()
+        }
+    }
+
+    if(state.status === 'ready' && state.articles != null && state.articles.length > 0){
+        await hide('#newsErrorContainer')
+        let index = Number.isInteger(state.currentIndex) ? state.currentIndex : 0
+        if(index < 0 || index >= state.articles.length){
+            index = 0
+        }
+        displayArticle(state.articles[index], index + 1, gameKey)
+        await show('#newsContent')
+        return
+    }
+
+    await hide('#newsContent')
+    await show('#newsErrorContainer')
+    await hide('#newsErrorLoading')
+    await hide('#newsErrorFailed')
+    await hide('#newsErrorNone')
+
+    if(state.status === 'failed'){
+        await show('#newsErrorFailed')
+    } else if(state.status === 'none'){
+        await show('#newsErrorNone')
+    } else {
+        await show('#newsErrorLoading')
+    }
+}
+
 // Bind retry button.
-newsErrorRetry.onclick = () => {
+document.getElementById('newsErrorRetry').onclick = () => {
     $('#newsErrorFailed').fadeOut(250, () => {
-        initNews()
+        initNews(selectedGame)
         $('#newsErrorLoading').fadeIn(250)
     })
 }
 
-newsArticleContentScrollable.onscroll = (e) => {
-    if(e.target.scrollTop > Number.parseFloat($('.newsArticleSpacerTop').css('height'))){
-        newsContent.setAttribute('scrolled', '')
-    } else {
-        newsContent.removeAttribute('scrolled')
+if(newsArticleContentScrollable != null){
+    newsArticleContentScrollable.onscroll = (e) => {
+        if(e.target.scrollTop > Number.parseFloat($('.newsArticleSpacerTop').css('height'))){
+            newsContent.setAttribute('scrolled', '')
+        } else {
+            newsContent.removeAttribute('scrolled')
+        }
     }
 }
 
@@ -778,25 +1395,30 @@ newsArticleContentScrollable.onscroll = (e) => {
  * @returns {Promise.<void>} A promise which resolves when the news
  * content has finished loading and transitioning.
  */
-function reloadNews(){
+function reloadNews(gameKey = selectedGame){
     return new Promise((resolve, reject) => {
-        $('#newsContent').fadeOut(250, () => {
-            $('#newsErrorLoading').fadeIn(250)
-            initNews().then(() => {
-                resolve()
+        if(isGameActive(gameKey)){
+            $('#newsContent').fadeOut(250, () => {
+                $('#newsErrorLoading').fadeIn(250)
+                initNews(gameKey).then(() => {
+                    resolve()
+                })
             })
-        })
+        } else {
+            initNews(gameKey).then(() => resolve())
+        }
     })
 }
-
-let newsAlertShown = false
 
 /**
  * Show the news alert indicating there is new news.
  */
-function showNewsAlert(){
-    newsAlertShown = true
-    $(newsButtonAlert).fadeIn(250)
+function showNewsAlert(gameKey){
+    const state = getNewsState(gameKey)
+    state.alertShown = true
+    if(isGameActive(gameKey)){
+        $(newsButtonAlert).fadeIn(250)
+    }
 }
 
 async function digestMessage(str) {
@@ -816,92 +1438,84 @@ async function digestMessage(str) {
  * @returns {Promise.<void>} A promise which resolves when the news
  * content has finished loading and transitioning.
  */
-async function initNews(){
+async function initNews(gameKey = selectedGame){
 
-    setNewsLoading(true)
+    const state = getNewsState(gameKey)
+    state.alertShown = false
+    setNewsLoading(gameKey, true)
 
-    const news = await loadNews()
+    const news = await loadNews(gameKey)
 
-    newsArr = news?.articles || null
+    state.articles = news?.articles || null
 
-    if(newsArr == null){
+    if(state.articles == null){
         // News Loading Failed
-        setNewsLoading(false)
+        state.status = 'failed'
+        setNewsLoading(gameKey, false)
 
-        await $('#newsErrorLoading').fadeOut(250).promise()
-        await $('#newsErrorFailed').fadeIn(250).promise()
-
-    } else if(newsArr.length === 0) {
+    } else if(state.articles.length === 0) {
         // No News Articles
-        setNewsLoading(false)
+        state.status = 'none'
+        setNewsLoading(gameKey, false)
 
-        ConfigManager.setNewsCache({
+        ConfigManager.setNewsCache(gameKey, {
             date: null,
             content: null,
             dismissed: false
         })
         ConfigManager.save()
-
-        await $('#newsErrorLoading').fadeOut(250).promise()
-        await $('#newsErrorNone').fadeIn(250).promise()
     } else {
         // Success
-        setNewsLoading(false)
+        state.status = 'ready'
+        setNewsLoading(gameKey, false)
 
-        const lN = newsArr[0]
-        const cached = ConfigManager.getNewsCache()
-        let newHash = await digestMessage(lN.content)
-        let newDate = new Date(lN.date)
-        let isNew = false
+        if(gameKey === GAME_MINECRAFT){
+            const lN = state.articles[0]
+            const cached = ConfigManager.getNewsCache(gameKey)
+            let newHash = await digestMessage(lN.content)
+            let newDate = new Date(lN.date)
+            let isNew = false
 
-        if(cached.date != null && cached.content != null){
+            if(cached.date != null && cached.content != null){
 
-            if(new Date(cached.date) >= newDate){
+                if(new Date(cached.date) >= newDate){
 
-                // Compare Content
-                if(cached.content !== newHash){
-                    isNew = true
-                    showNewsAlert()
-                } else {
-                    if(!cached.dismissed){
+                    // Compare Content
+                    if(cached.content !== newHash){
                         isNew = true
-                        showNewsAlert()
+                        showNewsAlert(gameKey)
+                    } else {
+                        if(!cached.dismissed){
+                            isNew = true
+                            showNewsAlert(gameKey)
+                        }
                     }
+
+                } else {
+                    isNew = true
+                    showNewsAlert(gameKey)
                 }
 
             } else {
                 isNew = true
-                showNewsAlert()
+                showNewsAlert(gameKey)
             }
 
+            if(isNew){
+                ConfigManager.setNewsCache(gameKey, {
+                    date: newDate.getTime(),
+                    content: newHash,
+                    dismissed: false
+                })
+                ConfigManager.save()
+            }
         } else {
-            isNew = true
-            showNewsAlert()
+            state.alertShown = false
         }
-
-        if(isNew){
-            ConfigManager.setNewsCache({
-                date: newDate.getTime(),
-                content: newHash,
-                dismissed: false
-            })
-            ConfigManager.save()
-        }
-
-        const switchHandler = (forward) => {
-            let cArt = parseInt(newsContent.getAttribute('article'))
-            let nxtArt = forward ? (cArt >= newsArr.length-1 ? 0 : cArt + 1) : (cArt <= 0 ? newsArr.length-1 : cArt - 1)
-    
-            displayArticle(newsArr[nxtArt], nxtArt+1)
-        }
-
-        document.getElementById('newsNavigateRight').onclick = () => { switchHandler(true) }
-        document.getElementById('newsNavigateLeft').onclick = () => { switchHandler(false) }
-        await $('#newsErrorContainer').fadeOut(250).promise()
-        displayArticle(newsArr[0], 1)
-        await $('#newsContent').fadeIn(250).promise()
     }
 
+    state.loaded = true
+    await renderNewsState(gameKey)
 
 }
 
@@ -911,7 +1525,8 @@ async function initNews(){
  * open the news UI.
  */
 document.addEventListener('keydown', (e) => {
-    if(newsActive){
+    const state = getNewsState(selectedGame)
+    if(state.active){
         if(e.key === 'ArrowRight' || e.key === 'ArrowLeft'){
             document.getElementById(e.key === 'ArrowRight' ? 'newsNavigateRight' : 'newsNavigateLeft').click()
         }
@@ -935,7 +1550,11 @@ document.addEventListener('keydown', (e) => {
  * @param {Object} articleObject The article meta object.
  * @param {number} index The article index.
  */
-function displayArticle(articleObject, index){
+function displayArticle(articleObject, index, gameKey = selectedGame){
+    const state = getNewsState(gameKey)
+    if(newsArticleTitle == null || newsArticleContentScrollable == null || newsNavigationStatus == null){
+        return
+    }
     newsArticleTitle.innerHTML = articleObject.title
     newsArticleTitle.href = articleObject.link
     newsArticleAuthor.innerHTML = 'by ' + articleObject.author
@@ -949,15 +1568,22 @@ function displayArticle(articleObject, index){
             text.style.display = text.style.display === 'block' ? 'none' : 'block'
         }
     })
-    newsNavigationStatus.innerHTML = Lang.query('ejs.landing.newsNavigationStatus', {currentPage: index, totalPages: newsArr.length})
+    newsNavigationStatus.innerHTML = Lang.query('ejs.landing.newsNavigationStatus', {currentPage: index, totalPages: state.articles.length})
     newsContent.setAttribute('article', index-1)
+    state.currentIndex = index - 1
 }
 
 /**
  * Load news information from the RSS feed specified in the
  * distribution index.
  */
-async function loadNews(){
+async function loadNews(gameKey = selectedGame){
+
+    if(gameKey === GAME_BNL){
+        return {
+            articles: []
+        }
+    }
 
     const distroData = await DistroAPI.getDistribution()
     if(!distroData.rawDistribution.rss) {

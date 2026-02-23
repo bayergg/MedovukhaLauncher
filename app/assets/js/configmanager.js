@@ -90,16 +90,28 @@ const DEFAULT_CONFIG = {
         }
     },
     newsCache: {
-        date: null,
-        content: null,
-        dismissed: false
+        minecraft: {
+            date: null,
+            content: null,
+            dismissed: false
+        },
+        blocknload: {
+            date: null,
+            content: null,
+            dismissed: false
+        }
     },
     clientToken: null,
     selectedServer: null, // Resolved
+    selectedGame: 'minecraft',
     selectedAccount: null,
     authenticationDatabase: {},
     modConfigurations: [],
-    javaConfig: {}
+    javaConfig: {},
+    bnl: {
+        selectedServer: null,
+        installRoot: null
+    }
 }
 
 let config = null
@@ -207,32 +219,87 @@ exports.getTempNativeFolder = function(){
 
 // System Settings (Unconfigurable on UI)
 
+function getDefaultNewsCacheEntry(){
+    return {
+        date: null,
+        content: null,
+        dismissed: false
+    }
+}
+
+function normalizeNewsCache(){
+    if(config.newsCache == null || typeof config.newsCache !== 'object'){
+        config.newsCache = {}
+    }
+
+    const hasLegacyKeys = Object.prototype.hasOwnProperty.call(config.newsCache, 'date')
+        || Object.prototype.hasOwnProperty.call(config.newsCache, 'content')
+        || Object.prototype.hasOwnProperty.call(config.newsCache, 'dismissed')
+
+    if(hasLegacyKeys){
+        const legacy = {
+            date: config.newsCache.date ?? null,
+            content: config.newsCache.content ?? null,
+            dismissed: config.newsCache.dismissed ?? false
+        }
+        const minecraftCache = config.newsCache.minecraft ?? legacy
+        const blocknloadCache = config.newsCache.blocknload ?? getDefaultNewsCacheEntry()
+        config.newsCache = {
+            minecraft: minecraftCache,
+            blocknload: blocknloadCache
+        }
+    } else {
+        if(config.newsCache.minecraft == null){
+            config.newsCache.minecraft = getDefaultNewsCacheEntry()
+        }
+        if(config.newsCache.blocknload == null){
+            config.newsCache.blocknload = getDefaultNewsCacheEntry()
+        }
+    }
+
+    return config.newsCache
+}
+
+function getDefaultBnlInstallRoot(){
+    return path.join(exports.getDataDirectory(), 'games', 'blocknload')
+}
+
 /**
  * Retrieve the news cache to determine
  * whether or not there is newer news.
  * 
+ * @param {string} gameKey Optional. The game key to retrieve. Defaults to minecraft.
  * @returns {Object} The news cache object.
  */
-exports.getNewsCache = function(){
-    return config.newsCache
+exports.getNewsCache = function(gameKey = 'minecraft'){
+    const cache = normalizeNewsCache()
+    return cache[gameKey] ?? getDefaultNewsCacheEntry()
 }
 
 /**
  * Set the new news cache object.
  * 
+ * @param {string|Object} gameKey The game key to set. Defaults to minecraft.
  * @param {Object} newsCache The new news cache object.
  */
-exports.setNewsCache = function(newsCache){
-    config.newsCache = newsCache
+exports.setNewsCache = function(gameKey, newsCache){
+    if(typeof gameKey === 'object' && newsCache == null){
+        newsCache = gameKey
+        gameKey = 'minecraft'
+    }
+    const cache = normalizeNewsCache()
+    cache[gameKey] = newsCache
 }
 
 /**
  * Set whether or not the news has been dismissed (checked)
  * 
  * @param {boolean} dismissed Whether or not the news has been dismissed (checked).
+ * @param {string} gameKey Optional. The game key to set. Defaults to minecraft.
  */
-exports.setNewsCacheDismissed = function(dismissed){
-    config.newsCache.dismissed = dismissed
+exports.setNewsCacheDismissed = function(dismissed, gameKey = 'minecraft'){
+    const cache = normalizeNewsCache()
+    cache[gameKey].dismissed = dismissed
 }
 
 /**
@@ -291,6 +358,92 @@ exports.getSelectedServer = function(def = false){
  */
 exports.setSelectedServer = function(serverID){
     config.selectedServer = serverID
+}
+
+/**
+ * Retrieve the selected game key.
+ *
+ * @param {boolean} def Optional. If true, the default value will be returned.
+ * @returns {string} The selected game key.
+ */
+exports.getSelectedGame = function(def = false){
+    return !def ? config.selectedGame : DEFAULT_CONFIG.selectedGame
+}
+
+/**
+ * Set the selected game key.
+ *
+ * @param {string} gameKey The game key to set.
+ */
+exports.setSelectedGame = function(gameKey){
+    config.selectedGame = gameKey
+}
+
+/**
+ * Retrieve the selected Block N Load server key.
+ *
+ * @param {boolean} def Optional. If true, the default value will be returned.
+ * @returns {string} The selected server key.
+ */
+exports.getBnlSelectedServer = function(def = false){
+    return !def ? config.bnl.selectedServer : DEFAULT_CONFIG.bnl.selectedServer
+}
+
+/**
+ * Set the selected Block N Load server key.
+ *
+ * @param {string} serverKey The selected server key.
+ */
+exports.setBnlSelectedServer = function(serverKey){
+    config.bnl.selectedServer = serverKey
+}
+
+/**
+ * Retrieve the Block N Load install root. If unset, returns default
+ * path under the launcher's data directory.
+ *
+ * @param {boolean} def Optional. If true, the default value will be returned.
+ * @returns {string} The Block N Load install root.
+ */
+exports.getBnlInstallRoot = function(def = false){
+    if(def){
+        return getDefaultBnlInstallRoot()
+    }
+    const configured = config?.bnl?.installRoot
+    if(configured == null){
+        return getDefaultBnlInstallRoot()
+    }
+    const trimmed = `${configured}`.trim()
+    if(trimmed.length === 0){
+        return getDefaultBnlInstallRoot()
+    }
+    return trimmed
+}
+
+/**
+ * Set the Block N Load install root. If the provided value matches
+ * the default install root, it will be cleared to keep it dynamic.
+ *
+ * @param {string|null} installRoot The install root to set.
+ */
+exports.setBnlInstallRoot = function(installRoot){
+    if(installRoot == null){
+        config.bnl.installRoot = null
+        return
+    }
+    const trimmed = `${installRoot}`.trim()
+    if(trimmed.length === 0){
+        config.bnl.installRoot = null
+        return
+    }
+    const defaultRoot = getDefaultBnlInstallRoot()
+    const normalized = path.normalize(trimmed)
+    const normalizedDefault = path.normalize(defaultRoot)
+    if(normalized.toLowerCase() === normalizedDefault.toLowerCase()){
+        config.bnl.installRoot = null
+    } else {
+        config.bnl.installRoot = trimmed
+    }
 }
 
 /**

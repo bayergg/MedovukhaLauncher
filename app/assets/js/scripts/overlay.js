@@ -122,6 +122,7 @@ async function toggleServerSelection(toggleState){
     toggleOverlay(toggleState, true, 'serverSelectContent')
 }
 
+
 /**
  * Set the content of the overlay.
  * 
@@ -172,23 +173,24 @@ function setDismissHandler(handler){
 /* Server Select View */
 
 document.getElementById('serverSelectConfirm').addEventListener('click', async () => {
-    const listings = document.getElementsByClassName('serverListing')
+    const listings = Array.from(document.querySelectorAll('#serverSelectListScrollable .serverListing'))
     for(let i=0; i<listings.length; i++){
         if(listings[i].hasAttribute('selected')){
             const serv = (await DistroAPI.getDistribution()).getServerById(listings[i].getAttribute('servid'))
             updateSelectedServer(serv)
-            refreshServerStatus(true)
+            refreshMinecraftServerStatus(true)
             toggleOverlay(false)
             return
         }
     }
     // None are selected? Not possible right? Meh, handle it.
     if(listings.length > 0){
-        const serv = (await DistroAPI.getDistribution()).getServerById(listings[i].getAttribute('servid'))
+        const serv = (await DistroAPI.getDistribution()).getServerById(listings[0].getAttribute('servid'))
         updateSelectedServer(serv)
         toggleOverlay(false)
     }
 })
+
 
 document.getElementById('accountSelectConfirm').addEventListener('click', async () => {
     const listings = document.getElementsByClassName('accountListing')
@@ -223,20 +225,25 @@ document.getElementById('serverSelectCancel').addEventListener('click', () => {
     toggleOverlay(false)
 })
 
+
 document.getElementById('accountSelectCancel').addEventListener('click', () => {
     $('#accountSelectContent').fadeOut(250, () => {
         $('#overlayContent').fadeIn(250)
     })
 })
 
-function setServerListingHandlers(){
-    const listings = Array.from(document.getElementsByClassName('serverListing'))
+function setServerListingHandlers(rootSelector){
+    const root = document.querySelector(rootSelector)
+    if(root == null){
+        return
+    }
+    const listings = Array.from(root.getElementsByClassName('serverListing'))
     listings.map((val) => {
         val.onclick = e => {
             if(val.hasAttribute('selected')){
                 return
             }
-            const cListings = document.getElementsByClassName('serverListing')
+            const cListings = root.getElementsByClassName('serverListing')
             for(let i=0; i<cListings.length; i++){
                 if(cListings[i].hasAttribute('selected')){
                     cListings[i].removeAttribute('selected')
@@ -299,6 +306,7 @@ async function populateServerListings(){
 
 }
 
+
 function populateAccountListings(){
     const accountsObj = ConfigManager.getAuthAccounts()
     const accounts = Array.from(Object.keys(accountsObj), v=>accountsObj[v])
@@ -315,7 +323,7 @@ function populateAccountListings(){
 
 async function prepareServerSelectionList(){
     await populateServerListings()
-    setServerListingHandlers()
+    setServerListingHandlers('#serverSelectListScrollable')
 }
 
 function prepareAccountSelectionList(){

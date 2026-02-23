@@ -1,4 +1,12 @@
 <div id="landingContainer" style="display: none;">
+    <div id="gamePanel">
+        <div id="gamePanelHeader"><%- lang('landing.gamePanelHeader') %></div>
+        <div id="gamePanelButtons">
+            <button id="gameSelectMinecraft" class="gameSelectButton" data-game="minecraft"><%- lang('landing.gameMinecraft') %></button>
+            <button id="gameSelectBnl" class="gameSelectButton" data-game="blocknload"><%- lang('landing.gameBlockNLoad') %></button>
+        </div>
+    </div>
+    <div id="landingMain">
     <div id="upper">
         <div id="left">
             <div id="image_seal_container">
@@ -142,6 +150,8 @@
             <div class="bot_wrapper">
                 <div id="launch_content">
                     <button id="launch_button"><%- lang('landing.launchButton') %></button>
+                    <button id="bnl_install_button" class="bot_label"><%- lang('landing.bnlInstallButton') %></button>
+                    <button id="bnl_repair_button" class="bot_label"><%- lang('landing.bnlRepairButton') %></button>
                     <div class="bot_divider"></div>
                     <button id="server_selection_button" class="bot_label"><%- lang('landing.launchButtonPlaceholder') %></button>
                 </div>
@@ -215,6 +225,7 @@
                 <span id="nENoneSpan" class="newsErrorContent"><%- lang('landing.newsErrorNoneSpan') %></span>
             </div>
         </div>
+    </div>
     </div>
     <script src="./assets/js/scripts/landing.js"></script>
 </div>
