@@ -1380,6 +1380,18 @@ input:checked + .toggleSwitchSlider {
 input:checked + .toggleSwitchSlider:before {
     transform: translateX(15px);
 }
+.toggleSwitch input:disabled + .toggleSwitchSlider {
+    cursor: default;
+    opacity: 0.45;
+}
+.toggleSwitch input:disabled + .toggleSwitchSlider:before {
+    box-shadow: none;
+    background-color: rgba(255, 255, 255, 0.85);
+}
+.toggleSwitch input:disabled:checked + .toggleSwitchSlider {
+    background-color: rgba(31, 140, 11, 0.45);
+    border: 1px solid rgba(31, 140, 11, 0.45);
+}
 
 /* Range Slider styles. */
 .rangeSlider {

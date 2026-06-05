@@ -1,5 +1,5 @@
 const fs   = require('fs-extra')
-const { LoggerUtil } = require('helios-core')
+const { LoggerUtil } = require('./helios')
 const os   = require('os')
 const path = require('path')
 
@@ -82,7 +82,9 @@ const DEFAULT_CONFIG = {
             resHeight: 530,
             fullscreen: false,
             autoConnect: true,
-            launchDetached: true
+            launchDetached: true,
+            syncModpackWithServer: true,
+            removeExcessiveMods: true
         },
         launcher: {
             allowPrerelease: false,
@@ -769,6 +771,44 @@ exports.getLaunchDetached = function(def = false){
  */
 exports.setLaunchDetached = function(launchDetached){
     config.settings.game.launchDetached = launchDetached
+}
+
+/**
+ * Check if the launcher should sync modpack instance content with the server.
+ *
+ * @param {boolean} def Optional. If true, the default value will be returned.
+ * @returns {boolean} Whether or not the launcher should sync modpack instance content with the server.
+ */
+exports.getSyncModpackWithServer = function(def = false){
+    return !def ? config.settings.game.syncModpackWithServer : DEFAULT_CONFIG.settings.game.syncModpackWithServer
+}
+
+/**
+ * Change the status of whether or not the launcher should sync modpack instance content with the server.
+ *
+ * @param {boolean} syncModpackWithServer Whether or not the launcher should sync modpack instance content with the server.
+ */
+exports.setSyncModpackWithServer = function(syncModpackWithServer){
+    config.settings.game.syncModpackWithServer = syncModpackWithServer
+}
+
+/**
+ * Check if the launcher should remove excessive mods from the instance mods directory.
+ *
+ * @param {boolean} def Optional. If true, the default value will be returned.
+ * @returns {boolean} Whether or not the launcher should remove excessive mods.
+ */
+exports.getRemoveExcessiveMods = function(def = false){
+    return !def ? config.settings.game.removeExcessiveMods : DEFAULT_CONFIG.settings.game.removeExcessiveMods
+}
+
+/**
+ * Change the status of whether or not the launcher should remove excessive mods from the instance mods directory.
+ *
+ * @param {boolean} removeExcessiveMods Whether or not the launcher should remove excessive mods.
+ */
+exports.setRemoveExcessiveMods = function(removeExcessiveMods){
+    config.settings.game.removeExcessiveMods = removeExcessiveMods
 }
 
 // Launcher Settings

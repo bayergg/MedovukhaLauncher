@@ -77,6 +77,21 @@ function bindFileSelectors(){
 
 bindFileSelectors()
 
+const settingsSyncModpackWithServer = document.getElementById('settingsSyncModpackWithServer')
+const settingsRemoveExcessiveMods = document.getElementById('settingsRemoveExcessiveMods')
+
+function updateModpackSyncDependencies(){
+    if(settingsSyncModpackWithServer == null || settingsRemoveExcessiveMods == null) {
+        return
+    }
+
+    settingsRemoveExcessiveMods.disabled = !settingsSyncModpackWithServer.checked
+}
+
+if(settingsSyncModpackWithServer != null) {
+    settingsSyncModpackWithServer.addEventListener('change', updateModpackSyncDependencies)
+}
+
 
 /**
  * General Settings Functions
@@ -169,6 +184,8 @@ async function initSettingsValues(){
             }
         }
     }
+
+    updateModpackSyncDependencies()
 
 }
 

@@ -4,28 +4,30 @@
 // Requirements
 const { URL }                 = require('url')
 const {
-    MojangRestAPI,
-    getServerStatus
-}                             = require('helios-core/mojang')
-const {
-    RestResponseStatus,
-    isDisplayableError,
-    validateLocalFile
-}                             = require('helios-core/common')
-const {
-    FullRepair,
-    DistributionIndexProcessor,
-    MojangIndexProcessor,
-    downloadFile
-}                             = require('helios-core/dl')
-const {
-    validateSelectedJvm,
-    ensureJavaDirIsRoot,
-    javaExecFromRoot,
-    discoverBestJvmInstallation,
-    latestOpenJDK,
-    extractJdk
-}                             = require('helios-core/java')
+    mojang: {
+        MojangRestAPI,
+        getServerStatus
+    },
+    common: {
+        RestResponseStatus,
+        isDisplayableError,
+        validateLocalFile
+    },
+    dl: {
+        FullRepair,
+        DistributionIndexProcessor,
+        MojangIndexProcessor,
+        downloadFile
+    },
+    java: {
+        validateSelectedJvm,
+        ensureJavaDirIsRoot,
+        javaExecFromRoot,
+        discoverBestJvmInstallation,
+        latestOpenJDK,
+        extractJdk
+    }
+}                             = require('./assets/js/helios')
 
 // Internal Requirements
 const DiscordWrapper          = require('./assets/js/discordwrapper')
@@ -483,7 +485,9 @@ async function dlAsync(login = true) {
         ConfigManager.getInstanceDirectory(),
         ConfigManager.getLauncherDirectory(),
         ConfigManager.getSelectedServer(),
-        DistroAPI.isDevMode()
+        DistroAPI.isDevMode(),
+        ConfigManager.getSyncModpackWithServer(),
+        ConfigManager.getRemoveExcessiveMods()
     )
 
     fullRepairModule.spawnReceiver()
